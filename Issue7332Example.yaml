@@ -1,0 +1,71 @@
+apiversion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: hr-retry-replication
+spec:
+  templates:
+    - name: hr-retry-replication
+      dag:
+        tasks:
+          - name: Create-Json-List
+            template: createJsonList
+          - name: Retry-And-Loop
+            template: retryAndLoop
+            arguments:
+              parameters:
+                - name: itemId
+                  value: '{{item.Id}}'
+            withParam: '{{tasks.Create-Json-List.outputs.parameters.jsonList}}'
+            depends: Create-Json-List
+          - name: Check-Output
+            template: checkOutput
+            arguments:
+              parameters:
+                - name: someInput
+                  value: '{{tasks.Retry-And-Loop.outputs.parameters.outputParam}}'
+            depends: Retry-And-Loop
+    - name: checkOutput
+      inputs:
+        parameters:
+          - name: someInput
+      script:
+        image: 'alpine:3.7'
+        command:
+          - /bin/sh
+        source: |
+          echo "The Output is: {{inputs.parameters.someInput}}"
+    - name: retryAndLoop
+      inputs:
+        parameters:
+          - name: itemId
+      outputs:
+        parameters:
+          - name: outputParam
+            valueFrom:
+              path: /outputParam.txt
+      script:
+        image: 'alpine:3.7'
+        command:
+          - /bin/sh
+        source: |
+          echo ItemId: {{inputs.parameters.itemId}}
+          if [[ {{ retries }} == 0 ]]; then
+            exit 1 # Exit as failed on zeroth retry
+          fi
+          echo "Successful" > /outputParam.txt
+          exit 0 # Else exit successfully
+      retryStrategy:
+        limit: '2'
+    - name: createJsonList
+      outputs:
+        parameters:
+          - name: jsonList
+            valueFrom:
+              path: /jsonList.json
+      script:
+        image: 'alpine:3.7'
+        command:
+          - /bin/sh
+        source: |
+          echo [{\"Id\": \"1\"}, {\"Id\": \"2\"}] > /jsonList.json
+  entrypoint: hr-retry-replication
