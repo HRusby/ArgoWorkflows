@@ -1,0 +1,58 @@
+apiversion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: semaphore-task-level
+spec:
+  entrypoint: semaphore-task-level
+  templates:
+    - name: semaphore-task-level
+      dag:
+        tasks:
+          - name: SempahoreLoop
+            template: semaphore-sync
+            arguments:
+              parameters:
+                - name: exitCode
+                  value: "{{item}}"
+            withItems:
+              - "0"
+              - "1"
+              - "0"
+              - "1"
+              - "0"
+              - "1"
+          # - name: SuccessSemaphore
+          #   template: semaphore-sync
+          #   arguments:
+          #     parameters:
+          #       - name: exitCode
+          #         value: "0"
+          #
+          # - name: FailSemaphore
+          #   template: semaphore-sync
+          #   arguments:
+          #     parameters:
+          #       - name: exitCode
+          #         value: "1"
+    - name: semaphore-sync
+      retryStrategy:
+        limit: "3"
+        backoff:
+          duration: "2s"
+          factor: "1"
+      inputs:
+        parameters:
+          - name: exitCode
+      synchronization:
+        semaphore: 
+          configMapKeyRef:
+            name: semaphore-config
+            key: semaphore-limit
+      script:
+        image: alpine:3.7
+        command:
+          - "sh"
+        source: |
+          sleep 2
+          echo "Testing Sempahores"
+          exit {{inputs.parameters.exitCode}}
